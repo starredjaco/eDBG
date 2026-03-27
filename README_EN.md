@@ -141,10 +141,6 @@ More options:
 |       -mcp        |      start the HTTP MCP server on device      |
 |     -mcp-port     |   MCP listening port, default is `19810`     |
 
-## 🤖 MCP Mode
-
-[README_mcp_en.md](README_mcp_en.md)
-
 More commands:
 
 - **Hardware breakpoints** `hbreak`: Usage is similar to `break`, but limited to a maximum of 4.
@@ -188,6 +184,10 @@ More commands:
   - `t +n threadname`: Filter by thread name
 
 - **Set Symbol** `set address name`：Name specified address
+
+## 🤖 MCP Mode
+
+[README_mcp_en.md](README_mcp_en.md)
 
 ## 💭 Implementation
 
