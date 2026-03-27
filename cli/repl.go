@@ -39,6 +39,7 @@ type Client struct {
 	Process        *controller.Process
 	BrkManager     *module.BreakPointManager
 	Config         *UserConfig
+	MCP            *MCPState
 	Incoming       chan bool
 	Done           chan bool
 	DoClean        chan bool
@@ -54,6 +55,7 @@ func CreateClient(process *controller.Process, library *controller.LibraryInfo, 
 		Process:        process,
 		BrkManager:     brkManager,
 		Config:         config,
+		MCP:            NewMCPState(),
 		Incoming:       make(chan bool, 1),
 		Done:           make(chan bool, 1),
 		DoClean:        make(chan bool, 1),
@@ -78,11 +80,16 @@ func (this *Client) Run() {
 		}
 	}()
 	go func() {
-		this.REPL()
+		if !this.IsMCPMode() {
+			this.REPL()
+		}
 	}()
 }
 
 func (this *Client) OutputInfo() {
+	if this.ShouldSuppressOutput() {
+		return
+	}
 	if this.Config.Registers {
 		fmt.Print(config.BLUE)
 		fmt.Println("──────────────────────────────────────[ REGISTERS ]──────────────────────────────────────")
@@ -454,6 +461,10 @@ func (this *Client) HandleThread(args []string) {
 		this.Process.PrintThreads()
 		return
 	}
+	if len(args) == 1 && args[0] == "all" {
+		this.Config.ThreadFilters = []*ThreadFilter{}
+		return
+	}
 	if len(args) >= 2 {
 		switch args[0] {
 		case "add", "+":
@@ -557,7 +568,7 @@ func (this *Client) PrintFileInfo() {
 	if this.Library.NonElfOffset != 0 {
 		fmt.Printf("  %-12s: 0x%x\n", "Library offset in file", this.Library.NonElfOffset)
 	}
-	
+
 	fmt.Printf("  %-12s: 0x%x\n", "Base Address", minAddr)
 	fmt.Printf("  %-12s: 0x%x\n", "End Address", maxAddr)
 	fmt.Printf("  %-12s: 0x%x\n", "Total Size", size)
@@ -888,6 +899,7 @@ func (this *Client) HandleContinue() bool {
 		this.NotifyContinue <- true
 	}
 	this.Working = false
+	this.MarkRunning()
 	return true
 }
 

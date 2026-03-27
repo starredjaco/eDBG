@@ -1,9 +1,9 @@
 package module
 
 import (
+	"eDBG/config"
 	"eDBG/controller"
 	"eDBG/utils"
-	"eDBG/config"
 	"fmt"
 	"github.com/cilium/ebpf/perf"
 	manager "github.com/gojue/ebpfmanager"
@@ -11,32 +11,32 @@ import (
 
 type IEventListener interface {
 	SendRecord(rec perf.Record)
-    OnEvent(int, []byte, *manager.PerfMap, *manager.Manager)
+	OnEvent(int, []byte, *manager.PerfMap, *manager.Manager)
 }
 
 type BreakPoint struct {
-	Addr *controller.Address
-	Enable bool
-	Deleted bool
+	Addr     *controller.Address
+	Enable   bool
+	Deleted  bool
 	Hardware bool
-	Pid uint32
-	Type int
+	Pid      uint32
+	Type     int
 }
 
 type BreakPointManager struct {
-	process *controller.Process
-	BreakPoints []*BreakPoint
+	process             *controller.Process
+	BreakPoints         []*BreakPoint
 	temporaryBreakPoint []*BreakPoint
-	ProbeHandler *ProbeHandler
-	TempBreakTid uint32
-	Running bool
+	ProbeHandler        *ProbeHandler
+	TempBreakTid        uint32
+	Running             bool
 }
 
 func CreateBreakPointManager(listener IEventListener, BTF_File string, process *controller.Process) *BreakPointManager {
 	return &BreakPointManager{
-		process: process,
-		ProbeHandler: CreateProbeHandler(listener, BTF_File), 
-		Running: false,
+		process:      process,
+		ProbeHandler: CreateProbeHandler(listener, BTF_File),
+		Running:      false,
 	}
 }
 
@@ -55,11 +55,11 @@ func (this *BreakPointManager) SetTempBreak(address *controller.Address, tid uin
 	}
 
 	brk := &BreakPoint{
-		Addr: address,
-		Enable: true,
+		Addr:    address,
+		Enable:  true,
 		Deleted: false,
-		Pid: this.process.WorkPid,
-		Type: config.HW_BREAKPOINT_X,
+		Pid:     this.process.WorkPid,
+		Type:    config.HW_BREAKPOINT_X,
 	}
 
 	switch config.Preference {
@@ -112,11 +112,11 @@ func (this *BreakPointManager) CreateBreakPoint(address *controller.Address, ena
 		}
 	}
 	brk := &BreakPoint{
-		Addr: address,
+		Addr:     address,
 		Hardware: false,
-		Enable: enable,
-		Deleted: false,
-		Pid: this.process.WorkPid,
+		Enable:   enable,
+		Deleted:  false,
+		Pid:      this.process.WorkPid,
 	}
 	this.BreakPoints = append(this.BreakPoints, brk)
 	return nil
@@ -137,16 +137,16 @@ func (this *BreakPointManager) CreateHWBreakPoint(address *controller.Address, e
 			Count++
 		}
 	}
-	if Count >= config.Available_HW - 2 {
+	if Count >= config.Available_HW-2 {
 		return fmt.Errorf("Hardware Breakpoint count limit exceed. Delete some hardware breakpoints or use uprobe.")
 	}
 	brk := &BreakPoint{
-		Addr: address,
+		Addr:     address,
 		Hardware: true,
-		Enable: enable,
-		Deleted: false,
-		Pid: this.process.WorkPid,
-		Type: Type,
+		Enable:   enable,
+		Deleted:  false,
+		Pid:      this.process.WorkPid,
+		Type:     Type,
 	}
 	this.BreakPoints = append(this.BreakPoints, brk)
 	return nil
@@ -179,6 +179,7 @@ func (this *BreakPointManager) SetupProbe() error {
 func (this *BreakPointManager) Init() error {
 	return this.ProbeHandler.SetupManagerOptions()
 }
+
 func (this *BreakPointManager) Start(addresss []*controller.Address) error {
 	for _, addr := range addresss {
 		err := this.CreateBreakPoint(addr, true)

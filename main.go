@@ -1,10 +1,12 @@
 package main
 
 import (
+	"context"
 	"eDBG/cli"
 	"eDBG/config"
 	"eDBG/controller"
 	"eDBG/event"
+	mcpserver "eDBG/mcp"
 	"eDBG/module"
 	"eDBG/utils"
 	"encoding/json"
@@ -16,6 +18,7 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
 
 	"github.com/inconshreveable/go-update"
 	_ "github.com/shuLhan/go-bindata" // add for bindata in Makefile
@@ -106,6 +109,8 @@ func main() {
 		proxy           bool
 		disablePkgChk   bool
 		vbkFlag         string
+		mcpMode         bool
+		mcpPort         int
 		// vertual			bool
 	)
 	var brkFlag string
@@ -128,8 +133,15 @@ func main() {
 	flag.BoolVar(&disableColor, "disable-color", false, "Disable color display")
 	flag.StringVar(&prefer, "prefer", "", "Preference. 'uprobe' for Uprobes and 'hardware' for Hardware breakpoints")
 	flag.StringVar(&outputfile, "o", "&&NotSetNotSetNotSetO=O", "Save your progress to specified file")
+	flag.BoolVar(&mcpMode, "mcp", false, "Start eDBG in MCP server mode")
+	flag.IntVar(&mcpPort, "mcp-port", 19810, "Port used by the MCP server")
 	flag.Parse()
 	config.DisablePackageCheck = disablePkgChk
+
+	if mcpMode {
+		prefer = "uprobe"
+		config.SHOW_VERTUAL = true
+	}
 
 	if brkFlag != "" && vbkFlag != "" {
 		fmt.Println("Error: Cannot use both -b (file offset) and -vb (virtual offset) flags simultaneously.")
@@ -166,7 +178,6 @@ func main() {
 		fmt.Println("No Package Specified. Use -p com.package.name")
 		os.Exit(1)
 	}
-	
 
 	process, err := controller.CreateProcess(packageName)
 	if err != nil {
@@ -176,14 +187,14 @@ func main() {
 	if libName == "" {
 		fmt.Println("No Library Specified. Use -l libraryname.so")
 		os.Exit(1)
-	} 
+	}
 	library, err := controller.CreateLibrary(process, libName)
-		if err != nil {
-			fmt.Println("Create Library error: ", err)
-			os.Exit(1)
-		}
-		workedlib[libName] = library
-	
+	if err != nil {
+		fmt.Println("Create Library error: ", err)
+		os.Exit(1)
+	}
+	workedlib[libName] = library
+
 	btfFile := ""
 	if !utils.CheckConfig("CONFIG_DEBUG_INFO_BTF=y") {
 		btfFile = utils.FindBTFAssets()
@@ -218,34 +229,39 @@ func main() {
 		Registers: !hidreg,
 		Disasm:    !hiddis,
 	})
-	if inputfile == "" {
+	if mcpMode {
+		client.EnableMCPMode()
+	}
+	if inputfile == "" || mcpMode {
 		var brkAddrs []uint64
 		var err error
 
-		// 修改：根据 -b 或 -vb 处理断点
-		if vbkFlag != "" {
-			// 解析虚拟地址
-			virtualAddrs, err := ParseBreakPoints(vbkFlag)
-			if err != nil {
-				fmt.Println("Parsing virtual addresses failed: ", err)
-				os.Exit(1)
-			}
-			// 将虚拟地址转换为文件偏移
-			for _, vaddr := range virtualAddrs {
-				fmt.Printf("Converting virtual address 0x%x ", vaddr)
-				fileOffset, err := utils.ConvertVirtualOffsetToFileOffset(library.LibPath, vaddr)
+		if !mcpMode {
+			// 修改：根据 -b 或 -vb 处理断点
+			if vbkFlag != "" {
+				// 解析虚拟地址
+				virtualAddrs, err := ParseBreakPoints(vbkFlag)
 				if err != nil {
-					fmt.Printf("Failed to convert virtual address 0x%x: %v\n", vaddr, err)
+					fmt.Println("Parsing virtual addresses failed: ", err)
 					os.Exit(1)
 				}
-				fmt.Printf("to file offset: 0x%x\n", fileOffset)
-				brkAddrs = append(brkAddrs, fileOffset)
-			}
-		} else { // 包含 brkFlag != "" 和两者都为空的情况
-			brkAddrs, err = ParseBreakPoints(brkFlag)
-			if err != nil {
-				fmt.Println("Create Breakpoints Failed: ", err)
-				os.Exit(1)
+				// 将虚拟地址转换为文件偏移
+				for _, vaddr := range virtualAddrs {
+					fmt.Printf("Converting virtual address 0x%x ", vaddr)
+					fileOffset, err := utils.ConvertVirtualOffsetToFileOffset(library.LibPath, vaddr)
+					if err != nil {
+						fmt.Printf("Failed to convert virtual address 0x%x: %v\n", vaddr, err)
+						os.Exit(1)
+					}
+					fmt.Printf("to file offset: 0x%x\n", fileOffset)
+					brkAddrs = append(brkAddrs, fileOffset)
+				}
+			} else { // 包含 brkFlag != "" 和两者都为空的情况
+				brkAddrs, err = ParseBreakPoints(brkFlag)
+				if err != nil {
+					fmt.Println("Create Breakpoints Failed: ", err)
+					os.Exit(1)
+				}
 			}
 		}
 
@@ -267,25 +283,27 @@ func main() {
 		for _, name := range Config.TNames {
 			client.AddThreadFilterName(name)
 		}
-		for _, brk := range Config.BreakPoints {
-			val, ok := workedlib[brk.LibName]
-			var libInfo *controller.LibraryInfo
-			if !ok {
-				_libinfo, err := controller.CreateLibrary(process, brk.LibName)
-				if err != nil {
-					fmt.Printf("Cannot locate library %s: %v. Skipped.\n", brk.LibName, err)
-					continue
+		if !mcpMode {
+			for _, brk := range Config.BreakPoints {
+				val, ok := workedlib[brk.LibName]
+				var libInfo *controller.LibraryInfo
+				if !ok {
+					_libinfo, err := controller.CreateLibrary(process, brk.LibName)
+					if err != nil {
+						fmt.Printf("Cannot locate library %s: %v. Skipped.\n", brk.LibName, err)
+						continue
+					}
+					libInfo = _libinfo
+					workedlib[brk.LibName] = libInfo
+				} else {
+					libInfo = val
 				}
-				libInfo = _libinfo
-				workedlib[brk.LibName] = libInfo
-			} else {
-				libInfo = val
-			}
 
-			if brk.Enable {
-				brkAddressInfos = append(brkAddressInfos, controller.NewAddress(libInfo, brk.Offset))
-			} else {
-				brkManager.CreateBreakPoint(controller.NewAddress(libInfo, brk.Offset), false)
+				if brk.Enable {
+					brkAddressInfos = append(brkAddressInfos, controller.NewAddress(libInfo, brk.Offset))
+				} else {
+					brkManager.CreateBreakPoint(controller.NewAddress(libInfo, brk.Offset), false)
+				}
 			}
 		}
 	}
@@ -296,22 +314,51 @@ func main() {
 		fmt.Println("Module init Failed: ", err)
 		os.Exit(1)
 	}
-	if len(brkAddressInfos) > 0 {
-		err = brkManager.Start(brkAddressInfos)
-		if err != nil {
-			fmt.Println("Module start Failed: ", err)
-			fmt.Println("Possible reasons:\n\n1. Some instructions do not support uprobe. Try setting breakpoints on other instructions or use until to skip the current instruction.\n2. Breakpoints with invalid addresses exist. Check the breakpoint list.\n")
-			os.Exit(1)
+
+	var server *mcpserver.Server
+	serverErr := make(chan error, 1)
+
+	if mcpMode {
+		client.Run()
+		eventListener.Run()
+
+		server = mcpserver.NewServer(client, packageName, libName)
+		addr := fmt.Sprintf("127.0.0.1:%d", mcpPort)
+		go func() {
+			serverErr <- server.Serve(addr)
+		}()
+		fmt.Printf("MCP server listening on %s. Use adb forward tcp:%d tcp:%d\n", addr, mcpPort, mcpPort)
+		select {
+		case <-stopper:
+		case err := <-serverErr:
+			if err != nil {
+				fmt.Println("MCP server failed: ", err)
+			}
 		}
-		fmt.Printf("Working on %s in %s. Press Ctrl+C to quit\n", libName, packageName)
 	} else {
-		fmt.Println("eDBG is not running. Use continue/run to start eDBG when breakpoints are ready.")
+		if len(brkAddressInfos) > 0 {
+			err = brkManager.Start(brkAddressInfos)
+			if err != nil {
+				fmt.Println("Module start Failed: ", err)
+				fmt.Println("Possible reasons:\n\n1. Some instructions do not support uprobe. Try setting breakpoints on other instructions or use until to skip the current instruction.\n2. Breakpoints with invalid addresses exist. Check the breakpoint list.\n")
+				os.Exit(1)
+			}
+			fmt.Printf("Working on %s in %s. Press Ctrl+C to quit\n", libName, packageName)
+		} else {
+			fmt.Println("eDBG is not running. Use continue/run to start eDBG when breakpoints are ready.")
+		}
+
+		client.Run()
+		eventListener.Run()
+		<-stopper
 	}
 
-	client.Run()
-	eventListener.Run()
-	<-stopper
 	fmt.Println("Quiting eDBG...")
+	if server != nil {
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
+		defer cancel()
+		_ = server.Shutdown(shutdownCtx)
+	}
 	process.Continue()
 	// _ = brkManager.Stop()
 	if save {

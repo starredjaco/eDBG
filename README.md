@@ -117,6 +117,12 @@
 | -disable-color         | 禁用彩色输出                                                 |
 | -disable-package-check | 禁用包名检查，此时包名可以是进程名，库名必须使用绝对路径。**测试功能** |
 | -show-vertual          | 启用默认虚拟地址显示，显示偏移与 ida 相同，但可能导致 break 等命令偏移对不上。 |
+| -mcp                   | 启动 MCP 服务模式，监听本地端口供 `adb forward` 后的 agent 连接 |
+| -mcp-port              | MCP 服务监听端口，默认 `19810`                              |
+
+## 🤖 MCP 模式
+
+[README_mcp.md](README_mcp.md)
 
 更多的可用命令：
 
@@ -187,6 +193,16 @@
    ./build_env.sh
    ./build_arm.sh
    ```
+
+### macOS 编译
+
+macOS 下可以直接使用 `Makefile_macOS`。它会通过 Docker 运行仓库里的 Linux `bpftool`，从而绕过 macOS 不能直接执行 `bpftool` 的问题。
+
+```shell
+make -f Makefile_macOS NDK_ROOT=$HOME/Library/Android/sdk/ndk/27.0.12077973 clean all
+```
+
+也可以直接用默认 `Makefile`，只要传入合适的 `NDK_ROOT`。在 macOS 上，`genbtf` 会自动走 Docker。
 
 ## 💭 实现原理
 
