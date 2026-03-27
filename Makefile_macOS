@@ -1,0 +1,17 @@
+ifndef NDK_ROOT
+$(error NDK_ROOT is not set. Example: make -f Makefile_macOS NDK_ROOT=/path/to/android-ndk)
+endif
+
+DOCKER_PLATFORM ?= linux/arm64
+ifneq ($(wildcard $(NDK_ROOT)/toolchains/llvm/prebuilt/darwin-arm64),)
+NDK_HOST_TAG ?= darwin-arm64
+else
+NDK_HOST_TAG ?= darwin-x86_64
+endif
+
+TOOLCHAIN_BIN ?= $(NDK_ROOT)/toolchains/llvm/prebuilt/$(NDK_HOST_TAG)/bin
+ANDROID_CC ?= $(TOOLCHAIN_BIN)/aarch64-linux-android29-clang
+ANDROID_CXX ?= $(TOOLCHAIN_BIN)/aarch64-linux-android29-clang++
+CMD_BPFTOOL ?= docker run --rm --platform $(DOCKER_PLATFORM) -v $(CURDIR):/src -w /src alpine:3.20 /src/assets/bpftool
+
+include Makefile

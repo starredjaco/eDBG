@@ -6,7 +6,7 @@
   [![Platform](https://img.shields.io/badge/platform-Android%20ARM64-red.svg?style=flat-square)](https://www.android.com/)
   ![GitHub Repo stars](https://img.shields.io/github/stars/ShinoLeah/eDBG)
 
-  [简体中文](READM.md) | English
+  [简体中文](README.md) | English
 
 </div>
 
@@ -20,6 +20,7 @@
 - Supports common debugging functionalities (see "Command Details")
 - Uses pwndbg-like CLI interface with GDB-style interactions for ease of use
 - File+offset based breakpoint registration enables quick startup and supports multi-thread/process debugging
+- Supports MCP mode, giving LLMs stable dynamic-analysis capabilities with little to no need to bypass anti-debugging.
 
 ## 💕 Demo
 
@@ -137,6 +138,12 @@ More options:
 |      -prefer      |              uprobe or hardware               |
 |  -disable-color   |            disable colorful output            |
 |   -show-vertual   |        show vertual address by default        |
+|       -mcp        |      start the HTTP MCP server on device      |
+|     -mcp-port     |   MCP listening port, default is `19810`     |
+
+## 🤖 MCP Mode
+
+[README_mcp_en.md](README_mcp_en.md)
 
 More commands:
 
